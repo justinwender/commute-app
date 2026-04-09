@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Commute
 
-## Getting Started
+A PWA that compares commute routes from Hudson Yards / Port Authority to 594 Broadway (SoHo), overlaying live MTA data on top of static route analysis.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Route comparison** — ranked route cards with dot ratings for reliability, crowding, walk time, and transfers
+- **Origin + weather toggles** — Hudson Yards vs Port Authority, good vs bad weather rankings
+- **Live MTA overlay** — reliability and crowding dots update from real-time GTFS-RT feeds
+- **Alert banner** — active service alerts for watched lines (7, E, C, R, W, B, D, F, M)
+- **Push notifications** — alerts for significant delays on high-priority lines (7, E, C, R)
+- **PWA** — installable to iPhone home screen, offline support for static UI
+- **Dark mode** — automatic via `prefers-color-scheme`
+
+## Architecture
+
+```
+Static layer (route cards, walk times, rankings)
+  ↕ merged at render time
+Live layer (reliability dots, crowding dots, est. time deltas, alert banner)
+  ↑ read from Upstash Redis on page load
+  ↑ written by cron agent every 10 min from MTA GTFS-RT feeds
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+cp .env.local.example .env.local
+# Fill in env vars (see below)
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+| Variable | Description |
+|----------|-------------|
+| `VAPID_PUBLIC_KEY` | Web Push VAPID public key |
+| `VAPID_PRIVATE_KEY` | Web Push VAPID private key |
+| `VAPID_SUBJECT` | VAPID subject (mailto: URI) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Same public key, exposed to client |
+| `KV_REST_API_URL` | Upstash Redis REST URL |
+| `KV_REST_API_TOKEN` | Upstash Redis REST token |
+| `CRON_SECRET` | Secret for authenticating cron endpoint |
+| `MTA_API_KEY` | Free key from [api.mta.info](https://api.mta.info) |
 
-To learn more about Next.js, take a look at the following resources:
+Generate VAPID keys: `npx web-push generate-vapid-keys`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## API Routes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/alerts` | GET | Returns cached conditions from Redis |
+| `/api/subscribe` | POST | Saves push subscription to Redis |
+| `/api/notify` | POST | Cron: fetches MTA feeds, updates Redis, sends push if needed |
+| `/api/test-push` | POST | Sends a test push notification |
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Deploy to Vercel with Upstash Redis integration. The cron job (`vercel.json`) runs `/api/notify` every 10 minutes on weekdays 6am-9pm.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Tech Stack
+
+- Next.js (App Router) + TypeScript
+- Plain CSS with CSS variables + dark mode
+- Upstash Redis
+- MTA GTFS-RT feeds via `gtfs-realtime-bindings`
+- Web Push API via `web-push`
